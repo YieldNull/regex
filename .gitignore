@@ -21,4 +21,4 @@ fabric.properties
 /regex.iml
 /.idea/
 /target/
-out.png
+*.png

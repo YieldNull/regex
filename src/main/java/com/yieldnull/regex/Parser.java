@@ -9,14 +9,34 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 public class Parser {
+    /**
+     * The origin regular expression
+     */
     private String regex;
 
+    /**
+     * Recoding the last index of NFA. Increase when a new state created.
+     */
     private int nIndex;
+
+    /**
+     * Recoding the last index of DFA. Increase when a new state created.
+     */
     private int dIndex;
 
+    /**
+     * The DFA states that match input
+     */
     private List<Integer> dMatch = new ArrayList<>();
 
+    /**
+     * The starting state of the generated NFA
+     */
     private State nStart;
+
+    /**
+     * The starting state of the generated DFA
+     */
     private State dStart;
 
 
@@ -31,7 +51,7 @@ public class Parser {
         int index;
 
         /**
-         * All the arrows starting from this state
+         * All the out arrows starting from this state
          */
         List<Arrow> arrows;
 
@@ -69,18 +89,40 @@ public class Parser {
          */
         abstract void connect(Label label, State target);
 
+        /**
+         * The labels of out arrows
+         *
+         * @return states
+         */
         List<Label> outLabels() {
             return arrows.stream().map(arrow -> arrow.label).collect(Collectors.toList());
         }
 
+        /**
+         * The states to which out arrows point
+         *
+         * @return states
+         */
         List<State> outStates() {
             return arrows.stream().map(arrow -> arrow.target).collect(Collectors.toList());
         }
 
+        /**
+         * Has any out arrow whose has the label?
+         *
+         * @param label the label to query
+         * @return true if has any
+         */
         boolean contains(Label label) {
             return arrows.stream().anyMatch(arrow -> arrow.label.equals(label));
         }
 
+        /**
+         * The states that arrows with "label" point to
+         *
+         * @param label the label
+         * @return states
+         */
         List<State> findOutStates(Label label) {
             return arrows.stream().filter(arrow -> arrow.label.equals(label)).map(arrow -> arrow.target).collect(Collectors.toList());
         }
@@ -169,10 +211,17 @@ public class Parser {
         }
 
 
+        @Override
         public abstract String toString();
 
+        @Override
         public boolean equals(Object obj) {
             return obj instanceof Label && obj.toString().equals(toString());
+        }
+
+        @Override
+        public int hashCode() {
+            return toString().hashCode();
         }
     }
 
@@ -217,7 +266,14 @@ public class Parser {
      * A NFA Fragment which consists of some NFA States and Arrows.
      */
     private static class NFAFrag {
+        /**
+         * The starting state.
+         */
         State start;
+
+        /**
+         * The end states which have dangling arrows.
+         */
         List<State> end;
 
         NFAFrag(State start, List<State> endStates) {
@@ -230,12 +286,24 @@ public class Parser {
             this.end = Collections.singletonList(end);
         }
 
+        /**
+         * Connect to a State. Point all the dangling arrows in end states to the target state.
+         *
+         * @param target target state
+         */
         void connect(State target) {
             for (State s : end) {
                 s.arrows.stream().filter(r -> r.target == null).forEach(r -> r.target = target);
             }
         }
 
+        /**
+         * Combine the end states of frag with a state.
+         *
+         * @param frag  fragment
+         * @param state state
+         * @return states
+         */
         static List<State> combine(NFAFrag frag, State state) {
             List<State> end = new LinkedList<>(frag.end);
             end.add(state);
@@ -243,6 +311,13 @@ public class Parser {
             return end;
         }
 
+        /**
+         * Combine the end states of frag1 with those of frag2
+         *
+         * @param frag1 fragment
+         * @param frag2 another fragment
+         * @return states
+         */
         static List<State> combine(NFAFrag frag1, NFAFrag frag2) {
             List<State> out = new LinkedList<>();
 
@@ -413,7 +488,7 @@ public class Parser {
      * Convert postfix regular expression to NFA.
      *
      * @param postfix the postfix regular expression
-     * @return the start state
+     * @return the start state of NFA
      */
     private State post2nfa(String postfix) {
         Stack<NFAFrag> stack = new Stack<>();
@@ -476,7 +551,12 @@ public class Parser {
         return frag.start;
     }
 
-
+    /**
+     * Convert NFA to DFA using Powerset construction algorithm
+     *
+     * @param start the start state of NFA
+     * @return the start state of DFA
+     */
     private State nfa2dfa(State start) {
         DFAState s0 = genDState(closure(Collections.singleton(start)));
 
@@ -493,8 +573,7 @@ public class Parser {
 
             states.stream()
                     .flatMap(s -> s.outLabels().stream())
-                    .distinct()
-                    .filter(label -> !(label instanceof EmptyLabel)).forEach(label -> {
+                    .filter(label -> !(label instanceof EmptyLabel)).distinct().forEach(label -> {
 
                 // ε-closure(move(states, c))
                 Set<State> cloMove = closure(states.stream()
@@ -521,6 +600,12 @@ public class Parser {
         return s0;
     }
 
+    /**
+     * Calculate the closure of the state set.
+     *
+     * @param set a set of NFA States
+     * @return the closure
+     */
     private Set<State> closure(Set<State> set) {
         Set<State> closure = new HashSet<>(set);
 
@@ -541,15 +626,27 @@ public class Parser {
         return closure;
     }
 
-
+    /**
+     * Draw NFA to a image named "NFA.png" in current/working directory
+     */
     public void drawNFA() {
         draw(nStart, Collections.singletonList(nIndex), false);
     }
 
+    /**
+     * Draw DFA to a image named "DFA.png" in current/working directory
+     */
     public void drawDFA() {
         draw(dStart, dMatch, true);
     }
 
+    /**
+     * Draw FA to an img file.
+     *
+     * @param start        the start state
+     * @param matchedIndex the index of state that matches input
+     * @param isDFA        is drawing DFA?
+     */
     private void draw(State start, List<Integer> matchedIndex, boolean isDFA) {
         GraphViz gv = new GraphViz();
         gv.addln(gv.start_graph());
@@ -561,7 +658,7 @@ public class Parser {
 
         gv.addln("node [shape = circle];");
         gv.addln("S0 [style = invis]");
-        gv.addln(String.format("S0 -> S%d [ label = \"start\"]", dStart.index));
+        gv.addln(String.format("S0 -> S%d [ label = \"start\"]", start.index));
 
 
         List<Integer> visited = new ArrayList<>();
@@ -592,18 +689,38 @@ public class Parser {
         gv.writeGraphToFile(gv.getGraph(gv.getDotSource(), type, representationType), out);
     }
 
-    public void compile(String re) {
-        regex = re;
+    /**
+     * Compile a regular expression to NFA and DFA.
+     *
+     * @param regex the regular expression
+     */
+    public void compile(String regex) {
+        this.regex = regex;
 
-        re = format(re);
-        System.out.println("Formatted: " + re);
+        regex = format(regex);
+        System.out.println("Formatted: " + regex);
 
-        re = re2post(re);
-        System.out.println("Postfix: " + re);
+        regex = re2post(regex);
+        System.out.println("Postfix: " + regex);
 
-        nStart = post2nfa(re);
+        nStart = post2nfa(regex);
         dStart = nfa2dfa(nStart);
     }
+
+    /**
+     * Test cases:
+     * <p>
+     * (a|b)*
+     * (a*|b*)*
+     * (a|b)*abb(a|b)*
+     * (a|b)*a(a|b)
+     * a(bb)+a
+     * abab|abbb
+     * a?a?a?aaa
+     * (ab|cd)*
+     * abc(a|b|c)*cba
+     * ((aa|bb)|((ab|ba)(aa|bb)*(ab|ba)))*
+     */
 
     public static void main(String[] args) throws IOException {
         Parser parser = new Parser();
